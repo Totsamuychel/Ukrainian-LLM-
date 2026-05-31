@@ -1,0 +1,19 @@
+{
+  "timestamp": "2025-12-12 19:28:52",
+  "settings": {
+    "period_start": 1780,
+    "period_end": 1880,
+    "region": "Ukraine"
+  },
+  "downloaded_works": [],
+  "corpus_statistics": {
+    "total_chars": 0,
+    "total_files": 0,
+    "cyrillic_percent": 0.0,
+    "output_file": "dataset\\processed\\combined_corpus.txt"
+  },
+  "summary": {
+    "total_works": 0,
+    "total_authors": 0
+  }
+}

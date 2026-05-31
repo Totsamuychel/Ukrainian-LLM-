@@ -1,0 +1,48 @@
+# Data and outputs
+data/raw/*
+!data/raw/.gitkeep
+data/raw/books/*
+!data/raw/books/.gitkeep
+data/raw/documents/*
+!data/raw/documents/.gitkeep
+data/raw/newspapers/*
+!data/raw/newspapers/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+out/*
+!out/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
+venv/
+ENV/
+
+# IDEs
+.vscode/
+.idea/
+.DS_Store
+
+# Logs
+*.log
+
+# Large files and model weights
+*.pdf
+!docs/**/*.pdf
+*.epub
+!docs/**/*.epub
+*.docx
+!docs/**/*.docx
+*.bin
+*.pt
+*.pkl
+*.h5
+*.onnx
+
+# Dataset files
+*.txt
+!docs/**/*.txt
+!requirements.txt
