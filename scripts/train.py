@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 """
-Навчання GPT на українських текстах 18-19 століття
+Pretraining GPT on 18th-19th Century Ukrainian Historical Texts
 
-Оптимізовано для:
-- Української мови (vocab_size=15K)
-- RTX 3090 (24GB VRAM)
-- Датасету 118MB
-- Історичних текстів
+Optimized for:
+- Ukrainian language morphology (custom BPE vocab_size=15K)
+- Consumer & workstation GPUs (e.g. NVIDIA RTX 3090, 24GB VRAM)
+- Curated ~118MB historical literature dataset
+- Mixed precision (bfloat16/float16) and gradient accumulation
 
-Запуск:
-    python train_ukrainian.py
+Usage:
+    python scripts/train.py
     
-Або з параметрами:
-    python train_ukrainian.py --batch_size=32 --max_iters=30000
+With overrides:
+    python scripts/train.py --batch_size=32 --max_iters=30000
 """
 
 import os
@@ -25,7 +25,6 @@ import torch
 torch._dynamo.config.suppress_errors = True
 
 import numpy as np
-import torch
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.distributed import init_process_group, destroy_process_group
 
@@ -34,7 +33,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.model.model import GPTConfig, GPT
 
 # ============================================================================
-# ПАРАМЕТРИ ДЛЯ УКРАЇНСЬКОЇ МОВИ
+# HYPERPARAMETERS & CONFIGURATION
 # ============================================================================
 
 # I/O
@@ -44,7 +43,7 @@ log_interval = 10
 eval_iters = 100
 eval_only = False
 always_save_checkpoint = True
-init_from = 'scratch'
+init_from = 'scratch'  # 'scratch' or 'resume'
 
 # Logging
 wandb_log = False
@@ -57,7 +56,7 @@ gradient_accumulation_steps = 4
 batch_size = 32
 block_size = 512
 
-# Model - оптимізовано для української мови
+# Model architecture - optimized for Ukrainian BPE vocabulary
 n_layer = 10
 n_head = 10
 n_embd = 640
@@ -72,30 +71,30 @@ beta1 = 0.9
 beta2 = 0.95
 grad_clip = 1.0
 
-# Learning rate decay
+# Learning rate decay schedule
 decay_lr = True
 warmup_iters = 1000
 lr_decay_iters = 30000
 min_lr = 4e-5
 
-# DDP
+# Distributed training (DDP)
 backend = 'nccl'
 
-# System
+# Compute device & precision
 device = 'cuda'
 dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16'
 compile = False
 
 # ============================================================================
-# КОНФІГУРАЦІЯ
+# CONFIGURATION OVERRIDE
 # ============================================================================
 
-config_keys = [k for k,v in globals().items() if not k.startswith('_') and isinstance(v, (int, float, bool, str))]
+config_keys = [k for k, v in globals().items() if not k.startswith('_') and isinstance(v, (int, float, bool, str))]
 exec(open('src/model/configurator.py').read())
 config = {k: globals()[k] for k in config_keys}
 
 # ============================================================================
-# ІНІЦІАЛІЗАЦІЯ
+# INITIALIZATION
 # ============================================================================
 
 ddp = int(os.environ.get('RANK', -1)) != -1
@@ -116,7 +115,7 @@ else:
     ddp_world_size = 1
 
 tokens_per_iter = gradient_accumulation_steps * ddp_world_size * batch_size * block_size
-print(f"Токенів на ітерацію: {tokens_per_iter:,}")
+print(f"Tokens per iteration: {tokens_per_iter:,}")
 
 if master_process:
     os.makedirs(out_dir, exist_ok=True)
@@ -129,12 +128,13 @@ ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torc
 ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
 
 # ============================================================================
-# ЗАВАНТАЖЕННЯ ДАНИХ
+# DATA LOADING
 # ============================================================================
 
 data_dir = 'data/processed'
 
-def get_batch(split):
+def get_batch(split: str):
+    """Samples a random batch from memory-mapped binary tokens."""
     if split == 'train':
         data = np.memmap(os.path.join(data_dir, 'train.bin'), dtype=np.uint16, mode='r')
     else:
@@ -149,7 +149,7 @@ def get_batch(split):
     return x, y
 
 # ============================================================================
-# ІНІЦІАЛІЗАЦІЯ МОДЕЛІ
+# MODEL INITIALIZATION
 # ============================================================================
 
 iter_num = 0
@@ -161,24 +161,24 @@ if os.path.exists(meta_path):
     with open(meta_path, 'rb') as f:
         meta = pickle.load(f)
     meta_vocab_size = meta['vocab_size']
-    print(f"Знайдено vocab_size = {meta_vocab_size}")
+    print(f"Loaded tokenizer metadata: vocab_size = {meta_vocab_size}")
 else:
-    print(f"ПОМИЛКА: meta.pkl не знайдено. Запусти prepare_dataset.py спочатку!")
+    print(f"ERROR: meta.pkl not found at {meta_path}. Run scripts/prepare_dataset.py first!")
     exit(1)
 
 model_args = dict(n_layer=n_layer, n_head=n_head, n_embd=n_embd, block_size=block_size,
                   bias=bias, vocab_size=None, dropout=dropout)
 
 if init_from == 'scratch':
-    print("Ініціалізація нової моделі з нуля")
+    print("Initializing model from scratch")
     if meta_vocab_size is None:
-        print("Помилка: vocab_size не знайдено")
+        print("Error: vocab_size could not be determined")
         exit(1)
     model_args['vocab_size'] = meta_vocab_size
     gptconf = GPTConfig(**model_args)
     model = GPT(gptconf)
 elif init_from == 'resume':
-    print(f"Відновлення навчання з {out_dir}")
+    print(f"Resuming training from checkpoint: {out_dir}")
     ckpt_path = os.path.join(out_dir, 'ckpt.pt')
     checkpoint = torch.load(ckpt_path, map_location=device)
     checkpoint_model_args = checkpoint['model_args']
@@ -188,7 +188,7 @@ elif init_from == 'resume':
     model = GPT(gptconf)
     state_dict = checkpoint['model']
     unwanted_prefix = '_orig_mod.'
-    for k,v in list(state_dict.items()):
+    for k, v in list(state_dict.items()):
         if k.startswith(unwanted_prefix):
             state_dict[k[len(unwanted_prefix):]] = state_dict.pop(k)
     model.load_state_dict(state_dict)
@@ -209,7 +209,7 @@ if init_from == 'resume':
 checkpoint = None
 
 if compile:
-    print("Компіляція моделі...")
+    print("Compiling model via torch.compile...")
     unoptimized_model = model
     model = torch.compile(model)
 
@@ -217,11 +217,12 @@ if ddp:
     model = DDP(model, device_ids=[ddp_local_rank])
 
 # ============================================================================
-# ФУНКЦІЇ
+# LOSS ESTIMATION & LEARNING RATE SCHEDULE
 # ============================================================================
 
 @torch.no_grad()
 def estimate_loss():
+    """Estimates average loss across train and validation splits."""
     out = {}
     model.eval()
     for split in ['train', 'val']:
@@ -235,7 +236,8 @@ def estimate_loss():
     model.train()
     return out
 
-def get_lr(it):
+def get_lr(it: int) -> float:
+    """Computes learning rate with linear warmup and cosine decay."""
     if it < warmup_iters:
         return learning_rate * (it + 1) / (warmup_iters + 1)
     if it > lr_decay_iters:
@@ -250,15 +252,15 @@ if wandb_log and master_process:
     wandb.init(project=wandb_project, name=wandb_run_name, config=config)
 
 # ============================================================================
-# НАВЧАННЯ
+# MAIN TRAINING LOOP
 # ============================================================================
 
 print("\n" + "="*60)
-print("НАВЧАННЯ МОДЕЛІ НА УКРАЇНСЬКІЙ МОВІ")
+print("TRAINING UKRAINIAN HISTORICAL GPT MODEL")
 print("="*60)
-print(f"Параметри моделі: {model_args}")
-print(f"Датасет: {data_dir}")
-print(f"Вихід: {out_dir}")
+print(f"Model parameters: {model_args}")
+print(f"Dataset directory: {data_dir}")
+print(f"Checkpoint output: {out_dir}")
 print("="*60 + "\n")
 
 X, Y = get_batch('train')
@@ -272,9 +274,10 @@ while True:
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
 
+    # Evaluation and checkpoint saving
     if iter_num % eval_interval == 0 and master_process:
         losses = estimate_loss()
-        print(f"Крок {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
+        print(f"Step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
         if wandb_log:
             wandb.log({
                 "iter": iter_num,
@@ -294,12 +297,13 @@ while True:
                     'best_val_loss': best_val_loss,
                     'config': config,
                 }
-                print(f"Збереження чекпоінту в {out_dir}")
+                print(f"Saving checkpoint to: {out_dir}/ckpt.pt")
                 torch.save(checkpoint, os.path.join(out_dir, 'ckpt.pt'))
 
     if iter_num == 0 and eval_only:
         break
 
+    # Forward/backward pass with gradient accumulation
     for micro_step in range(gradient_accumulation_steps):
         if ddp:
             model.require_backward_grad_sync = (micro_step == gradient_accumulation_steps - 1)
@@ -309,6 +313,7 @@ while True:
         X, Y = get_batch('train')
         scaler.scale(loss).backward()
 
+    # Gradient clipping
     if grad_clip != 0.0:
         scaler.unscale_(optimizer)
         torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
@@ -317,6 +322,7 @@ while True:
     scaler.update()
     optimizer.zero_grad(set_to_none=True)
 
+    # Timing and logging
     t1 = time.time()
     dt = t1 - t0
     t0 = t1
@@ -325,8 +331,8 @@ while True:
         lossf = loss.item() * gradient_accumulation_steps
         if local_iter_num >= 5:
             mfu = raw_model.estimate_mfu(batch_size * gradient_accumulation_steps, dt)
-            running_mfu = mfu if running_mfu == -1.0 else 0.9*running_mfu + 0.1*mfu
-        print(f"Крок {iter_num}: loss {lossf:.4f}, час {dt*1000:.2f}ms, mfu {running_mfu*100:.2f}%")
+            running_mfu = mfu if running_mfu == -1.0 else 0.9 * running_mfu + 0.1 * mfu
+        print(f"Step {iter_num}: loss {lossf:.4f}, step time {dt*1000:.2f}ms, MFU {running_mfu*100:.2f}%")
 
     iter_num += 1
     local_iter_num += 1
@@ -338,5 +344,5 @@ if ddp:
     destroy_process_group()
 
 print("\n" + "="*60)
-print("НАВЧАННЯ ЗАВЕРШЕНО!")
+print("TRAINING COMPLETE!")
 print("="*60)

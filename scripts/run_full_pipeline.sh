@@ -1,36 +1,36 @@
 #!/bin/bash
-# Повний pipeline для навчання GPT на українській мові
+# End-to-end training pipeline for Ukrainian Historical LLM
 
 set -e
 
 echo "=========================================="
-echo "НАВЧАННЯ GPT НА УКРАЇНСЬКІЙ МОВІ"
+echo "TRAINING GPT FOR UKRAINIAN LANGUAGE"
 echo "=========================================="
 
-# Крок 1: Перевірка оптимізацій
+# Step 1: Check architecture optimizations
 echo ""
-echo "📊 Крок 1: Перевірка оптимізацій..."
-python check_ukrainian_optimization.py
+echo "Step 1: Validating architecture optimizations..."
+python scripts/check_optimization.py
 
-# Крок 2: Обучення токенайзера
+# Step 2: Train custom BPE tokenizer
 echo ""
-echo "🔤 Крок 2: Обучення токенайзера (15K vocab)..."
-python train_tokenizer_hf.py
+echo "Step 2: Training custom BPE tokenizer (15K vocab)..."
+python src/tokenizer/train.py
 
-# Крок 3: Підготовка датасету
+# Step 3: Dataset preparation and tokenization
 echo ""
-echo "📊 Крок 3: Підготовка датасету..."
-python prepare_dataset.py
+echo "Step 3: Encoding dataset into binary tokens..."
+python scripts/prepare_dataset.py
 
-# Крок 4: Навчання моделі
+# Step 4: Model pretraining
 echo ""
-echo "🚀 Крок 4: Навчання моделі на RTX 3090..."
-python train_ukrainian.py
+echo "Step 4: Training GPT model on GPU..."
+python scripts/train.py
 
 echo ""
 echo "=========================================="
-echo "✅ НАВЧАННЯ ЗАВЕРШЕНО!"
+echo "TRAINING PIPELINE COMPLETE!"
 echo "=========================================="
 echo ""
-echo "Результати збережено в: out_ukrainian/"
-echo "Чекпоінт: out_ukrainian/ckpt.pt"
+echo "Checkpoints and logs saved to: out/"
+echo "Best model checkpoint: out/ckpt.pt"

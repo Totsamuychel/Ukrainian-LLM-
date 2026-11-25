@@ -19,9 +19,9 @@ tokenizer.pre_tokenizer = ByteLevel()
 tokenizer.decoder = ByteLevelDecoder()
 
 # Trainer with special tokens for Ukrainian
-# Оптимізовано для української мови: 15K vocab замість 50K
+# Optimized for Ukrainian morphology: 15K vocab instead of 50K
 trainer = BpeTrainer(
-    vocab_size=15000,  # Оптимально для української мови
+    vocab_size=15000,  # Optimized for Ukrainian Cyrillic literature
     min_frequency=2,
     special_tokens=[
         "<s>",

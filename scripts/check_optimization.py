@@ -1,21 +1,20 @@
 #!/usr/bin/env python3
 """
-Перевірка оптимізацій для української мови
+Hardware & Architecture Optimization Benchmark for Ukrainian Language Model
 """
 import os
 import sys
-import torch
 
 # Ensure 'src' is findable
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.model.model import GPTConfig, GPT
 
 print("=" * 70)
-print("ПЕРЕВІРКА ОПТИМІЗАЦІЙ ДЛЯ УКРАЇНСЬКОЇ МОВИ")
+print("ARCHITECTURE OPTIMIZATION & VRAM BENCHMARK")
 print("=" * 70)
 
-# Оригінальна конфігурація (англійська)
-print("\n📊 ОРИГІНАЛЬНА КОНФІГУРАЦІЯ (англійська):")
+# 1. Baseline Configuration (Standard GPT-2 Small for English)
+print("\n📊 BASELINE CONFIGURATION (GPT-2 Small, English standard):")
 print("-" * 70)
 original_config = GPTConfig(
     block_size=1024,
@@ -35,10 +34,10 @@ print(f"Heads: {original_config.n_head}")
 print(f"Embedding dim: {original_config.n_embd}")
 print(f"Dropout: {original_config.dropout}")
 print(f"Bias: {original_config.bias}")
-print(f"Всього параметрів: {original_params:,}")
+print(f"Total parameters: {original_params:,}")
 
-# Оптимізована конфігурація (українська)
-print("\n🇺🇦 ОПТИМІЗОВАНА КОНФІГУРАЦІЯ (українська):")
+# 2. Optimized Configuration (Targeted for historical Ukrainian corpus)
+print("\n🇺🇦 OPTIMIZED CONFIGURATION (Ukrainian Custom BPE):")
 print("-" * 70)
 ukrainian_config = GPTConfig(
     block_size=512,
@@ -58,32 +57,26 @@ print(f"Heads: {ukrainian_config.n_head}")
 print(f"Embedding dim: {ukrainian_config.n_embd}")
 print(f"Dropout: {ukrainian_config.dropout}")
 print(f"Bias: {ukrainian_config.bias}")
-print(f"Всього параметрів: {ukrainian_params:,}")
+print(f"Total parameters: {ukrainian_params:,}")
 
-# Порівняння
-print("\n📈 ПОРІВНЯННЯ:")
+# Comparison
+print("\n📈 ARCHITECTURAL COMPARISON:")
 print("-" * 70)
 reduction = (1 - ukrainian_params / original_params) * 100
-print(f"Зменшення параметрів: {reduction:.1f}%")
-print(f"Оригінальна: {original_params:,}")
-print(f"Оптимізована: {ukrainian_params:,}")
-print(f"Економія: {original_params - ukrainian_params:,} параметрів")
+print(f"Parameter reduction: {reduction:.1f}%")
+print(f"Baseline parameters: {original_params:,}")
+print(f"Optimized parameters: {ukrainian_params:,}")
+print(f"Parameters saved: {original_params - ukrainian_params:,}")
 
-# Оцінка VRAM
-print("\n💾 ОЦІНКА VRAM (batch_size=32):")
+# VRAM Estimation
+print("\n💾 ESTIMATED VRAM CONSUMPTION (batch_size=32):")
 print("-" * 70)
 
-# Приблизна оцінка VRAM
-def estimate_vram(model, batch_size, block_size):
-    # Model weights
+def estimate_vram(model, batch_size: int, block_size: int):
+    """Estimates memory footprint: weights (FP32), activations, and Adam optimizer states."""
     model_vram = model.get_num_params() * 4 / 1e9  # float32
-    
-    # Activations (приблизно)
     activation_vram = batch_size * block_size * model.config.n_embd * 4 / 1e9
-    
-    # Optimizer states (Adam: 2x model size)
-    optimizer_vram = model.get_num_params() * 8 / 1e9
-    
+    optimizer_vram = model.get_num_params() * 8 / 1e9  # Adam states
     total = model_vram + activation_vram + optimizer_vram
     return model_vram, activation_vram, optimizer_vram, total
 
@@ -95,29 +88,27 @@ ukr_model_vram, ukr_act_vram, ukr_opt_vram, ukr_total = estimate_vram(
     ukrainian_model, batch_size, ukrainian_config.block_size
 )
 
-print(f"Оригінальна конфігурація:")
+print(f"Baseline configuration:")
 print(f"  Model weights: {orig_model_vram:.2f} GB")
 print(f"  Activations: {orig_act_vram:.2f} GB")
-print(f"  Optimizer: {orig_opt_vram:.2f} GB")
-print(f"  Всього: {orig_total:.2f} GB")
+print(f"  Optimizer states: {orig_opt_vram:.2f} GB")
+print(f"  Total VRAM estimate: {orig_total:.2f} GB")
 
-print(f"\nОптимізована конфігурація:")
+print(f"\nOptimized configuration:")
 print(f"  Model weights: {ukr_model_vram:.2f} GB")
 print(f"  Activations: {ukr_act_vram:.2f} GB")
-print(f"  Optimizer: {ukr_opt_vram:.2f} GB")
-print(f"  Всього: {ukr_total:.2f} GB")
+print(f"  Optimizer states: {ukr_opt_vram:.2f} GB")
+print(f"  Total VRAM estimate: {ukr_total:.2f} GB")
 
-print(f"\nЕкономія VRAM: {(1 - ukr_total / orig_total) * 100:.1f}%")
-print(f"RTX 3090 (24GB): {'✅ OK' if ukr_total < 24 else '❌ OOM'}")
-print(f"RTX 4060 (8GB): {'✅ OK' if ukr_total < 8 else '❌ OOM'}")
+print(f"\nVRAM footprint reduction: {(1 - ukr_total / orig_total) * 100:.1f}%")
+print(f"Hardware compatibility:")
+print(f"  RTX 3090 (24GB VRAM): {'✅ Fits comfortably' if ukr_total < 24 else '❌ OOM risk'}")
+print(f"  RTX 4060 (8GB VRAM):  {'✅ Fits' if ukr_total < 8 else '⚠️ Requires batch_size=16'}")
 
-# Рекомендації
-print("\n✅ РЕКОМЕНДАЦІЇ:")
+print("\n💡 KEY ARCHITECTURAL TAKEAWAYS:")
 print("-" * 70)
-print("1. Використовуй train_ukrainian.py для навчання")
-print("2. Vocab size 15K оптимально для української мови")
-print("3. Block size 512 економить пам'ять без втрати якості")
-print("4. Dropout 0.1 запобігає перенавчанню на малому датасеті")
-print("5. Batch size 32 оптимально для RTX 3090")
-
-print("\n" + "=" * 70)
+print("1. Vocab size 15K eliminates rare-token bloat and fits morphological structure.")
+print("2. Context window of 512 preserves narrative coherence while cutting activation memory by 50%.")
+print("3. Dropout 0.1 prevents overfitting on small historical literature corpora.")
+print("4. Removing biases (bias=False) stabilizes training and increases throughput.")
+print("=" * 70)

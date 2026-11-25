@@ -1,29 +1,27 @@
 #!/usr/bin/env python3
 """
-Тестування обученої моделі на українській мові
+Inference & Text Generation with Trained Ukrainian Language Model
 """
 import os
 import sys
 import torch
-import pickle
-from pathlib import Path
 from tokenizers import Tokenizer
 
 # Ensure 'src' is findable
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.model.model import GPT, GPTConfig
 
-# Параметри
+# Configuration
 checkpoint_path = "out/ckpt.pt"
 tokenizer_path = "data/processed/tokenizer.json"
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 print("=" * 70)
-print("ТЕСТУВАННЯ МОДЕЛІ НА УКРАЇНСЬКІЙ МОВІ")
+print("UKRAINIAN LANGUAGE MODEL INFERENCE & EVALUATION")
 print("=" * 70)
 
-# Завантажимо чекпоінт
-print("\n📥 Завантаження моделі...")
+# Load model checkpoint
+print("\n📥 Loading checkpoint...")
 checkpoint = torch.load(checkpoint_path, map_location=device)
 model_args = checkpoint['model_args']
 gptconf = GPTConfig(**model_args)
@@ -37,32 +35,29 @@ model.load_state_dict(state_dict)
 model.to(device)
 model.eval()
 
-print(f"✅ Модель завантажена")
-print(f"   Параметрів: {model.get_num_params():,}")
-print(f"   Ітерацій: {checkpoint['iter_num']}")
-print(f"   Val loss: {checkpoint['best_val_loss']:.4f}")
+print(f"✅ Model successfully loaded:")
+print(f"   Parameters: {model.get_num_params():,}")
+print(f"   Trained Iterations: {checkpoint['iter_num']}")
+print(f"   Best Val Loss: {checkpoint['best_val_loss']:.4f}")
 
-# Завантажимо токенайзер
-print("\n🔤 Завантаження токенайзера...")
+# Load custom BPE tokenizer
+print("\n🔤 Loading tokenizer...")
 tokenizer = Tokenizer.from_file(tokenizer_path)
-print(f"✅ Токенайзер завантажений (vocab_size={tokenizer.get_vocab_size()})")
+print(f"✅ Tokenizer loaded (vocab_size={tokenizer.get_vocab_size()})")
 
-# Функція для генерації тексту
-def generate(prompt, max_new_tokens=100, temperature=0.8, top_k=50):
-    """Генерує текст на основі промпту"""
-    # Кодуємо промпт
+def generate(prompt: str, max_new_tokens: int = 100, temperature: float = 0.8, top_k: int = 50) -> str:
+    """Generates text continuation from a prompt using autoregressive top-k sampling."""
     encoded = tokenizer.encode(prompt)
     x = torch.tensor(encoded.ids, dtype=torch.long, device=device).unsqueeze(0)
     
-    # Генеруємо
     with torch.no_grad():
         for _ in range(max_new_tokens):
-            # Обрізаємо якщо занадто довгий
+            # Crop to context window if sequence exceeds block size
             x_cond = x if x.size(1) <= model.config.block_size else x[:, -model.config.block_size:]
             logits, _ = model(x_cond)
             logits = logits[:, -1, :] / temperature
             
-            # Top-k sampling
+            # Top-k filtering
             if top_k is not None:
                 v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
                 logits[logits < v[:, [-1]]] = -float('Inf')
@@ -71,12 +66,10 @@ def generate(prompt, max_new_tokens=100, temperature=0.8, top_k=50):
             idx_next = torch.multinomial(probs, num_samples=1)
             x = torch.cat((x, idx_next), dim=1)
     
-    # Декодуємо
     generated_ids = x[0].tolist()
-    generated_text = tokenizer.decode(generated_ids)
-    return generated_text
+    return tokenizer.decode(generated_ids)
 
-# Тестові промпти
+# Test prompts
 prompts = [
     "Привіт",
     "Що буде в майбутньому ?",
@@ -85,16 +78,16 @@ prompts = [
 ]
 
 print("\n" + "=" * 70)
-print("ГЕНЕРАЦІЯ ТЕКСТУ")
+print("TEXT GENERATION SAMPLING")
 print("=" * 70)
 
 for i, prompt in enumerate(prompts, 1):
-    print(f"\n📝 Промпт {i}: \"{prompt}\"")
+    print(f"\n📝 Prompt {i}: \"{prompt}\"")
     print("-" * 70)
     generated = generate(prompt, max_new_tokens=80, temperature=0.7)
-    print(f"Результат:\n{generated}")
+    print(f"Output:\n{generated}")
     print()
 
 print("=" * 70)
-print("✅ ТЕСТУВАННЯ ЗАВЕРШЕНО!")
+print("✅ INFERENCE COMPLETE")
 print("=" * 70)

@@ -3,34 +3,37 @@ from pathlib import Path
 import ebooklib
 from ebooklib import epub
 from bs4 import BeautifulSoup
-import fitz  # PyMuPDF для PDF
+import fitz  # PyMuPDF for PDF extraction
 import re
 
-# Налаштування
-SOURCE_DIR = Path("dataset/raw/books")  # Де лежать скачані файли
+# Dataset configuration
+SOURCE_DIR = Path("dataset/raw/books")  # Path to raw downloaded literature files
 OUTPUT_FILE = Path("dataset/processed/dataset_train.txt")
 OUTPUT_DIR = Path("dataset/processed")
 
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-def clean_text(text):
-    """Базове очищення тексту"""
-    if not text: return ""
-    # Видаляємо зайві пробіли
+def clean_text(text: str) -> str:
+    """Performs baseline text sanitization and normalization."""
+    if not text:
+        return ""
+    # Normalize whitespace
     text = re.sub(r'\s+', ' ', text)
-    # Видаляємо номери сторінок (приблизно)
+    # Remove standalone page numbers
     text = re.sub(r'^\d+\s*$', '', text, flags=re.MULTILINE)
     return text.strip()
 
-def read_txt(path):
+def read_txt(path: Path) -> str:
+    """Reads raw text file."""
     try:
         with open(path, 'r', encoding='utf-8', errors='ignore') as f:
             return f.read()
     except Exception as e:
-        print(f"Помилка читання TXT {path.name}: {e}")
+        print(f"Error reading TXT {path.name}: {e}")
         return ""
 
-def read_epub(path):
+def read_epub(path: Path) -> str:
+    """Extracts text paragraphs from EPUB documents."""
     try:
         book = epub.read_epub(path)
         text = []
@@ -40,11 +43,11 @@ def read_epub(path):
                 text.append(soup.get_text())
         return "\n".join(text)
     except Exception as e:
-        print(f"Помилка читання EPUB {path.name}: {e}")
+        print(f"Error reading EPUB {path.name}: {e}")
         return ""
 
-def read_pdf(path):
-    """Спроба витягти текст з PDF (якщо є текстовий шар)"""
+def read_pdf(path: Path) -> str:
+    """Extracts text layer from digital PDF documents."""
     try:
         doc = fitz.open(path)
         text = []
@@ -52,55 +55,56 @@ def read_pdf(path):
             text.append(page.get_text())
         return "\n".join(text)
     except Exception as e:
-        print(f"Помилка читання PDF {path.name}: {e}")
+        print(f"Error reading PDF {path.name}: {e}")
         return ""
 
 def main():
-    print(f"Починаємо обробку файлів з {SOURCE_DIR}...")
+    print(f"Starting corpus extraction from {SOURCE_DIR}...")
     
-    total_text = ""
+    total_text = []
     files_processed = 0
     
-    # Проходимо по всіх файлах
-    for file_path in SOURCE_DIR.iterdir():
-        if not file_path.is_file(): continue
+    if not SOURCE_DIR.exists():
+        print(f"Directory {SOURCE_DIR} does not exist.")
+        return
         
+    for file_path in SOURCE_DIR.glob("**/*"):
+        if not file_path.is_file():
+            continue
+            
+        print(f"Processing: {file_path.name} ... ", end="")
         content = ""
         ext = file_path.suffix.lower()
-        
-        print(f"Обробка: {file_path.name} ... ", end="")
         
         if ext == '.txt':
             content = read_txt(file_path)
         elif ext == '.epub':
             content = read_epub(file_path)
         elif ext == '.pdf':
-            # PDF обробляємо вибірково, бо вони великі
-            # Якщо файл > 50MB, це скоріше за все скан (картинки), пропускаємо для швидкості
+            # Skip scanned PDFs (>50MB) to avoid OCR stalls
             if file_path.stat().st_size > 50 * 1024 * 1024:
-                print("SKIP (завеликий PDF, ймовірно скан)")
+                print("SKIP (large PDF, likely scanned image)")
                 continue
             content = read_pdf(file_path)
         else:
-            print("SKIP (непідтримуваний формат)")
+            print("SKIP (unsupported format)")
             continue
             
-        # Якщо текст витягнувся
-        if len(content) > 1000: # Хоча б 1000 символів
+        if len(content) > 1000:
             cleaned = clean_text(content)
-            total_text += cleaned + "\n\n" + "="*20 + "\n\n"
-            print(f"OK ({len(cleaned)} символів)")
+            total_text.append(f"\n\n--- DOCUMENT: {file_path.stem} ---\n\n")
+            total_text.append(cleaned)
             files_processed += 1
+            print(f"OK ({len(cleaned):,} characters)")
         else:
-            print("EMPTY (текст не знайдено або файл пустий)")
-
-    # Збереження
-    with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
-        f.write(total_text)
+            print("EMPTY (insufficient text extracted)")
+            
+    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+        f.write("".join(total_text))
         
-    print(f"\nГотово! Оброблено файлів: {files_processed}")
-    print(f"Результат збережено в: {OUTPUT_FILE}")
-    print(f"Загальний розмір чистого тексту: {len(total_text)/1024/1024:.2f} MB")
+    print(f"\nFinished! Processed {files_processed} files.")
+    print(f"Combined corpus saved to: {OUTPUT_FILE}")
+    print(f"Total extracted text size: {len(''.join(total_text)) / 1024 / 1024:.2f} MB")
 
 if __name__ == "__main__":
     main()
