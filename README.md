@@ -34,7 +34,11 @@ The goal is to explore the effectiveness of character-level and BPE tokenization
 1. Clone the repository.
 2. Install dependencies:
    ```bash
-   pip install torch numpy tokenizers tqdm PyMuPDF ebooklib beautifulsoup4
+   pip install -r requirements.txt
+   ```
+3. Run smoke tests:
+   ```bash
+   pytest -q
    ```
 
 ### Usage

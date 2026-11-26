@@ -89,8 +89,9 @@ compile = False
 # CONFIGURATION OVERRIDE
 # ============================================================================
 
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 config_keys = [k for k, v in globals().items() if not k.startswith('_') and isinstance(v, (int, float, bool, str))]
-exec(open('src/model/configurator.py').read())
+exec(open(os.path.join(PROJECT_ROOT, 'src', 'model', 'configurator.py')).read())
 config = {k: globals()[k] for k in config_keys}
 
 # ============================================================================
